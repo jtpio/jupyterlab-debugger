@@ -97,7 +97,7 @@
 /* Variable List */
 .jp-Debugger-variableList {
   margin: 0;
-  padding: 0;
+  padding: 0 15px;
   list-style-type: none;
 }
 
