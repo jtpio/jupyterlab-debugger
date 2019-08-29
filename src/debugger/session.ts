@@ -3,6 +3,7 @@ import { KernelMessage } from "@jupyterlab/services";
 import { IClientSession } from "@jupyterlab/apputils";
 import { IDisposable } from "@phosphor/disposable";
 import { DebugProtocol } from "vscode-debugprotocol";
+import { Signal } from "@phosphor/signaling";
 
 export interface IBreakpoint {
   text: string;
@@ -18,6 +19,7 @@ export interface IDebugSession extends IDisposable {
   breakpoints: IBreakpoint[];
   variables: DebugProtocol.Variable[];
   currentLine: number;
+  eventStopped: Signal<this, string>;
 }
 
 export class DebugSession implements IDebugSession {
@@ -129,6 +131,8 @@ export class DebugSession implements IDebugSession {
 
     if (msg.content.event === "thread") {
       this._threadId = msg.content.body.threadId;
+    } else if (msg.content.event === "stopped") {
+      this.eventStopped.emit(msg.content.body.reason);
     }
 
     return false;
@@ -138,6 +142,7 @@ export class DebugSession implements IDebugSession {
     this._seq = 0;
     this._currentCellLine = null;
     this._nextId = 1;
+    this._started = true;
 
     const kernel = this._notebook.session.kernel;
     const cell = this._notebook.content.activeCell;
@@ -170,7 +175,7 @@ export class DebugSession implements IDebugSession {
     // cellId does not seem to be used in xeus-python
     // TODO: send proper value for cellId
     const debugCell = kernel.requestDebug(
-      this.createUpdateCellRequest(0, this._nextId++, cellContent)
+      this.createUpdateCellRequest(this._nextId, this._nextId++, cellContent)
     );
     let debugCellReply: KernelMessage.IDebugReplyMsg;
     debugCell.onReply = (msg: KernelMessage.IDebugReplyMsg) => {
@@ -199,16 +204,6 @@ export class DebugSession implements IDebugSession {
     };
 
     await debugConfigDone.done;
-
-    this._started = true;
-
-    // execute the current cell
-    const debugExecute = kernel.requestExecute({ code: cellContent });
-    debugExecute.onReply = (msg: KernelMessage.IExecuteReplyMsg) => {
-      console.log("received execute reply");
-      console.log(msg);
-    };
-    // do not await here (blocking)
   }
 
   public async getVariables(): Promise<DebugProtocol.Variable[]> {
@@ -332,6 +327,8 @@ export class DebugSession implements IDebugSession {
   dispose(): void {}
 
   isDisposed: boolean;
+
+  eventStopped = new Signal<this, string>(this);
 
   private _notebook: NotebookPanel;
   private _seq: number;

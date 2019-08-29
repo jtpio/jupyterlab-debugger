@@ -1,5 +1,7 @@
 import { ToolbarButtonComponent } from "@jupyterlab/apputils";
 
+import { Signal } from "@phosphor/signaling";
+
 import { DebugProtocol } from "vscode-debugprotocol";
 
 import * as React from "react";
@@ -46,17 +48,14 @@ export class DebuggerComponent extends React.Component<
       this.onBreakpointsChanged,
       this
     );
+    this.props.debugger.debugSession.eventStopped.connect(
+      this.updateVisuals,
+      this
+    );
   };
 
   componentWillUnmount = () => {
-    this.props.debugger.breakpointChanged.disconnect(
-      this.onBreakpointsChanged,
-      this
-    );
-    this.props.debugger.activeCellChanged.disconnect(
-      this.onActiveCellChanged,
-      this
-    );
+    Signal.clearData(this);
   };
 
   onActiveCellChanged = (sender: IDebugger, breakpoints: IBreakpoint[]) => {
@@ -67,6 +66,16 @@ export class DebuggerComponent extends React.Component<
 
   onBreakpointsChanged = (sender: IDebugger, breakpoints: IBreakpoint[]) => {
     this.setState({ breakpoints });
+  };
+
+  updateVisuals = async () => {
+    const { debugSession } = this.props.debugger;
+    console.log("updateVisuals");
+    const variables = await debugSession.getVariables();
+    console.log("variables");
+    const { currentLine, started } = debugSession;
+    this.setState({ variables, started });
+    this.props.debugger.addLineHighlight(currentLine);
   };
 
   startDebugger = async () => {
@@ -91,9 +100,7 @@ export class DebuggerComponent extends React.Component<
     console.log("Continue");
     const { debugSession } = this.props.debugger;
     await debugSession.continue();
-    const { currentLine, variables, started } = debugSession;
-    this.setState({ variables, started });
-    this.props.debugger.addLineHighlight(currentLine);
+    await this.updateVisuals();
   };
 
   render() {
