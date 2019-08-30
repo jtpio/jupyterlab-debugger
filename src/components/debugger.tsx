@@ -48,20 +48,22 @@ export class DebuggerComponent extends React.Component<
       this.onBreakpointsChanged,
       this
     );
-    this.props.debugger.debugSession.eventStopped.connect(
-      this.updateVisuals,
-      this
-    );
+    this.addDebugSessionListeners();
   };
 
   componentWillUnmount = () => {
     Signal.clearData(this);
   };
 
+  addDebugSessionListeners = () => {
+    this.state.debugSession.eventStopped.connect(this.updateVisuals, this);
+  };
+
   onActiveCellChanged = (sender: IDebugger, breakpoints: IBreakpoint[]) => {
     const { debugSession } = this.props.debugger;
     const started = debugSession.started;
     this.setState({ debugSession, breakpoints, started });
+    this.addDebugSessionListeners();
   };
 
   onBreakpointsChanged = (sender: IDebugger, breakpoints: IBreakpoint[]) => {
@@ -70,9 +72,7 @@ export class DebuggerComponent extends React.Component<
 
   updateVisuals = async () => {
     const { debugSession } = this.props.debugger;
-    console.log("updateVisuals");
     const variables = await debugSession.getVariables();
-    console.log("variables");
     const { currentLine, started } = debugSession;
     this.setState({ variables, started });
     this.props.debugger.addLineHighlight(currentLine);
@@ -94,6 +94,7 @@ export class DebuggerComponent extends React.Component<
     this.setState({
       started: debugSession.started
     });
+    await this.updateVisuals();
   };
 
   debugContinue = async () => {

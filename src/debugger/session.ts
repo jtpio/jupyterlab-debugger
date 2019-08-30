@@ -4,6 +4,8 @@ import { IClientSession } from "@jupyterlab/apputils";
 import { IDisposable } from "@phosphor/disposable";
 import { DebugProtocol } from "vscode-debugprotocol";
 import { Signal } from "@phosphor/signaling";
+import { max } from "@phosphor/algorithm";
+import { CodeCell, Cell } from "@jupyterlab/cells";
 
 export interface IBreakpoint {
   text: string;
@@ -122,6 +124,25 @@ export class DebugSession implements IDebugSession {
     });
   }
 
+  protected _getLastExecutionCount(): number {
+    const notebook = this._notebook.content;
+    const codeCells = notebook.widgets.filter(cell => {
+      const codeCell = cell as CodeCell;
+      return codeCell.model.executionCount;
+    });
+    if (codeCells.length === 0) {
+      return 0;
+    }
+    const cell = max(codeCells, (first: Cell, second: Cell) => {
+      const firstCodeCell = first as CodeCell;
+      const secondCodeCell = second as CodeCell;
+      return (
+        firstCodeCell.model.executionCount - secondCodeCell.model.executionCount
+      );
+    });
+    return (cell as CodeCell).model.executionCount;
+  }
+
   protected _onIOPubMessage(sender: IClientSession, msg: any) {
     if (msg["msg_type"] !== "debug_event") {
       return;
@@ -141,8 +162,8 @@ export class DebugSession implements IDebugSession {
   public async start() {
     this._seq = 0;
     this._currentCellLine = null;
-    this._nextId = 1;
     this._started = true;
+    this._nextId = this._getLastExecutionCount() + 1;
 
     const kernel = this._notebook.session.kernel;
     const cell = this._notebook.content.activeCell;
@@ -207,6 +228,10 @@ export class DebugSession implements IDebugSession {
   }
 
   public async getVariables(): Promise<DebugProtocol.Variable[]> {
+    if (!this._started) {
+      return [];
+    }
+
     const kernel = this._notebook.session.kernel;
 
     const debugStacktrace = kernel.requestDebug(
@@ -297,6 +322,7 @@ export class DebugSession implements IDebugSession {
     await debugDisconnect.done;
 
     this._variables = [];
+    this._currentCellLine = null;
     this._started = false;
   }
 
