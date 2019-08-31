@@ -4,8 +4,6 @@ import { IClientSession } from "@jupyterlab/apputils";
 import { IDisposable } from "@phosphor/disposable";
 import { DebugProtocol } from "vscode-debugprotocol";
 import { Signal } from "@phosphor/signaling";
-import { max } from "@phosphor/algorithm";
-import { CodeCell, Cell } from "@jupyterlab/cells";
 
 export interface IBreakpoint {
   text: string;
@@ -124,25 +122,6 @@ export class DebugSession implements IDebugSession {
     });
   }
 
-  protected _getLastExecutionCount(): number {
-    const notebook = this._notebook.content;
-    const codeCells = notebook.widgets.filter(cell => {
-      const codeCell = cell as CodeCell;
-      return codeCell.model.executionCount;
-    });
-    if (codeCells.length === 0) {
-      return 0;
-    }
-    const cell = max(codeCells, (first: Cell, second: Cell) => {
-      const firstCodeCell = first as CodeCell;
-      const secondCodeCell = second as CodeCell;
-      return (
-        firstCodeCell.model.executionCount - secondCodeCell.model.executionCount
-      );
-    });
-    return (cell as CodeCell).model.executionCount;
-  }
-
   protected _onIOPubMessage(sender: IClientSession, msg: any) {
     if (msg["msg_type"] !== "debug_event") {
       return;
@@ -163,7 +142,6 @@ export class DebugSession implements IDebugSession {
     this._seq = 0;
     this._currentCellLine = null;
     this._started = true;
-    this._nextId = this._getLastExecutionCount() + 1;
 
     const kernel = this._notebook.session.kernel;
     const cell = this._notebook.content.activeCell;
@@ -171,6 +149,18 @@ export class DebugSession implements IDebugSession {
     if (!cell) {
       return;
     }
+
+    const historyMessage = {
+      output: false,
+      hist_access_type: "tail",
+      n: 10000
+    } as KernelMessage.IHistoryRequestMsg["content"];
+
+    const msg = await kernel.requestHistory(historyMessage);
+    const history = (msg.content as KernelMessage.IHistoryReply).history;
+
+    // assumer execution_count == history.length
+    this._nextId = history.length + 1;
 
     // listen to debug events on the IOPub channel
     const session = this._notebook.session;
